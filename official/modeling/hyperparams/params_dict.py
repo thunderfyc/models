@@ -14,10 +14,6 @@
 # ==============================================================================
 """A parameter dictionary class which supports the nest structure."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import re
@@ -73,7 +69,6 @@ class ParamsDict(object):
     if default_params is None:
       default_params = {}
     self.override(default_params, is_strict=False)
-    self.validate()
 
   def _set(self, k, v):
     if isinstance(v, dict):
@@ -317,7 +312,7 @@ class ParamsDict(object):
 def read_yaml_to_params_dict(file_path):
   """Reads a YAML file to a ParamsDict."""
   with tf.io.gfile.GFile(file_path, 'r') as f:
-    params_dict = yaml.load(f)
+    params_dict = yaml.load(f, Loader=yaml.FullLoader)
     return ParamsDict(params_dict)
 
 
@@ -438,12 +433,12 @@ def override_params_dict(params, dict_or_string_or_yaml_file, is_strict):
           nested_csv_str_to_json_str(dict_or_string_or_yaml_file))
     except ValueError:
       pass
-    params_dict = yaml.load(dict_or_string_or_yaml_file)
+    params_dict = yaml.load(dict_or_string_or_yaml_file, Loader=yaml.FullLoader)
     if isinstance(params_dict, dict):
       params.override(params_dict, is_strict)
     else:
       with tf.io.gfile.GFile(dict_or_string_or_yaml_file) as f:
-        params.override(yaml.load(f), is_strict)
+        params.override(yaml.load(f, Loader=yaml.FullLoader), is_strict)
   else:
     raise ValueError('Unknown input type to parse.')
   return params

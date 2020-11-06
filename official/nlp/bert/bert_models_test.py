@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import tensorflow as tf
 
@@ -48,7 +45,7 @@ class BertModelsTest(tf.test.TestCase):
         initializer=None,
         use_next_sentence_label=True)
     self.assertIsInstance(model, tf.keras.Model)
-    self.assertIsInstance(encoder, networks.TransformerEncoder)
+    self.assertIsInstance(encoder, networks.BertEncoder)
 
     # model has one scalar output: loss value.
     self.assertEqual(model.output.shape.as_list(), [

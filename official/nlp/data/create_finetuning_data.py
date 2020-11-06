@@ -14,10 +14,6 @@
 # ==============================================================================
 """BERT finetuning task dataset generator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import json
 import os
@@ -51,9 +47,9 @@ flags.DEFINE_string(
     "for the task.")
 
 flags.DEFINE_enum("classification_task_name", "MNLI",
-                  ["COLA", "MNLI", "MRPC", "PAWS-X", "QNLI", "QQP", "RTE",
-                   "SST-2", "STS-B", "WNLI", "XNLI", "XTREME-XNLI",
-                   "XTREME-PAWS-X"],
+                  ["AX", "COLA", "IMDB", "MNLI", "MRPC", "PAWS-X", "QNLI",
+                   "QQP", "RTE", "SST-2", "STS-B", "WNLI", "XNLI",
+                   "XTREME-XNLI", "XTREME-PAWS-X"],
                   "The name of the task to train BERT classifier. The "
                   "difference between XTREME-XNLI and XNLI is: 1. the format "
                   "of input tsv files; 2. the dev set for XTREME is english "
@@ -103,6 +99,11 @@ flags.DEFINE_integer(
 flags.DEFINE_bool(
     "version_2_with_negative", False,
     "If true, the SQuAD examples contain some that do not have an answer.")
+
+flags.DEFINE_bool(
+    "xlnet_format", False,
+    "If true, then data will be preprocessed in a paragraph, query, class order"
+    " instead of the BERT-style class, paragraph, query order.")
 
 # Shared flags across BERT fine-tuning tasks.
 flags.DEFINE_string("vocab_file", None,
@@ -182,8 +183,12 @@ def generate_classifier_dataset():
         max_seq_length=FLAGS.max_seq_length)
   else:
     processors = {
+        "ax":
+            classifier_data_lib.AxProcessor,
         "cola":
             classifier_data_lib.ColaProcessor,
+        "imdb":
+            classifier_data_lib.ImdbProcessor,
         "mnli":
             functools.partial(classifier_data_lib.MnliProcessor,
                               mnli_type=FLAGS.mnli_type),
@@ -263,9 +268,15 @@ def generate_squad_dataset():
   else:
     assert FLAGS.tokenization == "SentencePiece"
     return squad_lib_sp.generate_tf_record_from_json_file(
-        FLAGS.squad_data_file, FLAGS.sp_model_file,
-        FLAGS.train_data_output_path, FLAGS.max_seq_length, FLAGS.do_lower_case,
-        FLAGS.max_query_length, FLAGS.doc_stride, FLAGS.version_2_with_negative)
+        input_file_path=FLAGS.squad_data_file,
+        sp_model_file=FLAGS.sp_model_file,
+        output_path=FLAGS.train_data_output_path,
+        max_seq_length=FLAGS.max_seq_length,
+        do_lower_case=FLAGS.do_lower_case,
+        max_query_length=FLAGS.max_query_length,
+        doc_stride=FLAGS.doc_stride,
+        xlnet_format=FLAGS.xlnet_format,
+        version_2_with_negative=FLAGS.version_2_with_negative)
 
 
 def generate_retrieval_dataset():

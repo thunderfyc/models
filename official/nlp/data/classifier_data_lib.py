@@ -14,10 +14,6 @@
 # ==============================================================================
 """BERT library to process data for classification task."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import csv
 import importlib
@@ -124,6 +120,54 @@ class DataProcessor(object):
       return lines
 
 
+class AxProcessor(DataProcessor):
+  """Processor for the AX dataset (GLUE diagnostics dataset)."""
+
+  def get_train_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+  def get_dev_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+
+  def get_test_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
+  def get_labels(self):
+    """See base class."""
+    return ["contradiction", "entailment", "neutral"]
+
+  @staticmethod
+  def get_processor_name():
+    """See base class."""
+    return "AX"
+
+  def _create_examples(self, lines, set_type):
+    """Creates examples for the training/dev/test sets."""
+    text_a_index = 1 if set_type == "test" else 8
+    text_b_index = 2 if set_type == "test" else 9
+    examples = []
+    for i, line in enumerate(lines):
+      # Skip header.
+      if i == 0:
+        continue
+      guid = "%s-%s" % (set_type, self.process_text_fn(line[0]))
+      text_a = self.process_text_fn(line[text_a_index])
+      text_b = self.process_text_fn(line[text_b_index])
+      if set_type == "test":
+        label = "contradiction"
+      else:
+        label = self.process_text_fn(line[-1])
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+    return examples
+
+
 class ColaProcessor(DataProcessor):
   """Processor for the CoLA data set (GLUE version)."""
 
@@ -167,6 +211,44 @@ class ColaProcessor(DataProcessor):
         label = self.process_text_fn(line[1])
       examples.append(
           InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+    return examples
+
+
+class ImdbProcessor(DataProcessor):
+  """Processor for the IMDb dataset."""
+
+  def get_labels(self):
+    return ["neg", "pos"]
+
+  def get_train_examples(self, data_dir):
+    return self._create_examples(os.path.join(data_dir, "train"))
+
+  def get_dev_examples(self, data_dir):
+    return self._create_examples(os.path.join(data_dir, "test"))
+
+  @staticmethod
+  def get_processor_name():
+    """See base class."""
+    return "IMDB"
+
+  def _create_examples(self, data_dir):
+    """Creates examples."""
+    examples = []
+    for label in ["neg", "pos"]:
+      cur_dir = os.path.join(data_dir, label)
+      for filename in tf.io.gfile.listdir(cur_dir):
+        if not filename.endswith("txt"):
+          continue
+
+        if len(examples) % 1000 == 0:
+          logging.info("Loading dev example %d", len(examples))
+
+        path = os.path.join(cur_dir, filename)
+        with tf.io.gfile.GFile(path, "r") as f:
+          text = f.read().strip().replace("<br />", " ")
+        examples.append(
+            InputExample(
+                guid="unused_id", text_a=text, text_b=None, label=label))
     return examples
 
 
@@ -988,6 +1070,11 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
     if len(tokens_a) > max_seq_length - 2:
       tokens_a = tokens_a[0:(max_seq_length - 2)]
 
+  seg_id_a = 0
+  seg_id_b = 1
+  seg_id_cls = 0
+  seg_id_pad = 0
+
   # The convention in BERT is:
   # (a) For sequence pairs:
   #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
@@ -1009,19 +1096,19 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
   tokens = []
   segment_ids = []
   tokens.append("[CLS]")
-  segment_ids.append(0)
+  segment_ids.append(seg_id_cls)
   for token in tokens_a:
     tokens.append(token)
-    segment_ids.append(0)
+    segment_ids.append(seg_id_a)
   tokens.append("[SEP]")
-  segment_ids.append(0)
+  segment_ids.append(seg_id_a)
 
   if tokens_b:
     for token in tokens_b:
       tokens.append(token)
-      segment_ids.append(1)
+      segment_ids.append(seg_id_b)
     tokens.append("[SEP]")
-    segment_ids.append(1)
+    segment_ids.append(seg_id_b)
 
   input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -1033,7 +1120,7 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
   while len(input_ids) < max_seq_length:
     input_ids.append(0)
     input_mask.append(0)
-    segment_ids.append(0)
+    segment_ids.append(seg_id_pad)
 
   assert len(input_ids) == max_seq_length
   assert len(input_mask) == max_seq_length

@@ -80,13 +80,14 @@ class SentencePredictionTaskTest(tf.test.TestCase, parameterized.TestCase):
     metrics = task.build_metrics()
 
     strategy = tf.distribute.get_strategy()
-    dataset = strategy.experimental_distribute_datasets_from_function(
+    dataset = strategy.distribute_datasets_from_function(
         functools.partial(task.build_inputs, config.train_data))
 
     iterator = iter(dataset)
     optimizer = tf.keras.optimizers.SGD(lr=0.1)
     task.train_step(next(iterator), model, optimizer, metrics=metrics)
-    task.validation_step(next(iterator), model, metrics=metrics)
+    model.save(os.path.join(self.get_temp_dir(), "saved_model"))
+    return task.validation_step(next(iterator), model, metrics=metrics)
 
   @parameterized.named_parameters(
       ("init_cls_pooler", True),
@@ -182,19 +183,33 @@ class SentencePredictionTaskTest(tf.test.TestCase, parameterized.TestCase):
     aggregated = task.aggregate_logs(state=aggregated, step_outputs=outputs)
     self.assertIn(metric_type, task.reduce_aggregated_logs(aggregated))
 
-  def test_task_with_fit(self):
+  def test_np_metrics_cola_partial_batch(self):
+    train_data_path = os.path.join(self.get_temp_dir(), "train.tf_record")
+    num_examples = 5
+    global_batch_size = 8
+    seq_length = 16
+    _create_fake_dataset(
+        train_data_path,
+        seq_length=seq_length,
+        num_classes=2,
+        num_examples=num_examples)
+
+    train_data_config = (
+        sentence_prediction_dataloader.SentencePredictionDataConfig(
+            input_path=train_data_path,
+            seq_length=seq_length,
+            is_training=True,
+            label_type="int",
+            global_batch_size=global_batch_size,
+            drop_remainder=False,
+            include_example_id=True))
+
     config = sentence_prediction.SentencePredictionConfig(
-        model=self.get_model_config(2), train_data=self._train_data_config)
-    task = sentence_prediction.SentencePredictionTask(config)
-    model = task.build_model()
-    model = task.compile_model(
-        model,
-        optimizer=tf.keras.optimizers.SGD(lr=0.1),
-        train_step=task.train_step,
-        metrics=task.build_metrics())
-    dataset = task.build_inputs(config.train_data)
-    logs = model.fit(dataset, epochs=1, steps_per_epoch=2)
-    self.assertIn("loss", logs.history)
+        metric_type="matthews_corrcoef",
+        model=self.get_model_config(2),
+        train_data=train_data_config)
+    outputs = self._run_task(config)
+    self.assertEqual(outputs["sentence_prediction"].shape.as_list(), [8, 1])
 
   def _export_bert_tfhub(self):
     bert_config = configs.BertConfig(
